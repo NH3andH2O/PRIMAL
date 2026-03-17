@@ -1,0 +1,15 @@
+name: primal
+channels:
+  - defaults
+dependencies:
+  - python=3.7
+  - pip
+  - cython
+  - numpy=1.18
+  - setuptools
+  - wheel
+  - pip:
+      - gym==0.17.0
+      - tensorflow==1.15.0
+      - matplotlib
+      - protobuf==3.19.6

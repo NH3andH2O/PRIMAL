@@ -89,3 +89,5 @@ auto/
 ###################
 __pycache__/
 results/
+saved_environments/
+primal_results/
