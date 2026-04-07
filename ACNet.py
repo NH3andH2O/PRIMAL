@@ -1,5 +1,13 @@
-import tensorflow as tf
-import tensorflow.contrib.layers as layers
+import os
+
+# 设置 TensorFlow 相关环境变量，必须在导入 TensorFlow 前生效
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
+os.environ.setdefault('TF_XLA_FLAGS', '--tf_xla_auto_jit=0')
+
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+import tf_slim as layers
 import numpy as np
 #parameters for training
 GRAD_CLIP              = 1000.0
@@ -50,7 +58,7 @@ class ACNet:
                                       +(1-self.target_on_goals)*tf.log(tf.clip_by_value(1-self.on_goal,1e-10,1.0)))
             self.loss          = 0.5 * self.value_loss + self.policy_loss + 0.5*self.valid_loss \
                             - self.entropy * 0.01 +.5*self.blocking_loss
-            self.imitation_loss = tf.reduce_mean(tf.contrib.keras.backend.categorical_crossentropy(self.optimal_actions_onehot,self.policy)) 
+            self.imitation_loss = tf.reduce_mean(tf.keras.losses.categorical_crossentropy(self.optimal_actions_onehot,self.policy)) 
             
             # Get gradients from local network using local losses and
             # normalize the gradients using clipping

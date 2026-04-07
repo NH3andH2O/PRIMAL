@@ -1,16 +1,28 @@
 {
-  "name": "primal-dev",
+  "name": "primal-tf2-dev",
   "build": {
     "dockerfile": "Dockerfile",
     "context": ".."
   },
+  "runArgs": [
+    "--gpus=all"
+  ],
   "workspaceFolder": "/workspaces/PRIMAL",
-  "postCreateCommand": "bash .devcontainer/postCreate.sh",
   "remoteUser": "vscode",
+  "containerEnv": {
+    "NVIDIA_VISIBLE_DEVICES": "all",
+    "NVIDIA_DRIVER_CAPABILITIES": "compute,utility",
+    "PYTHONUNBUFFERED": "1",
+    "TF_CPP_MIN_LOG_LEVEL": "1",
+    "TF_FORCE_GPU_ALLOW_GROWTH": "true",
+    "TF_USE_LEGACY_KERAS": "1"
+  },
+  "postCreateCommand": "bash .devcontainer/postCreate.sh",
   "customizations": {
     "vscode": {
       "settings": {
-        "python.defaultInterpreterPath": "/opt/conda/envs/primal/bin/python"
+        "python.defaultInterpreterPath": "/opt/conda/envs/primal/bin/python",
+        "python.terminal.activateEnvironment": true
       },
       "extensions": [
         "ms-python.python",

@@ -91,3 +91,6 @@ __pycache__/
 results/
 saved_environments/
 primal_results/
+
+.github/
+.venv/

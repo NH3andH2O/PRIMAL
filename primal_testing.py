@@ -1,14 +1,33 @@
-import tensorflow as tf
+import os
+import sys
+
+# 在导入 TensorFlow 前设置环境变量，避免 oneDNN/XLA 触发 LLVM JIT 退出崩溃
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '0')
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
+os.environ.setdefault('TF_XLA_FLAGS', '--tf_xla_auto_jit=0')
+
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 from ACNet import ACNet
 import numpy as np
 import json
-import os
 import mapf_gym_cap as mapf_gym
 import time
 from od_mstar3.col_set_addition import OutOfTimeError,NoSolutionError
 
-results_path="primal_results"
+try:
+    from tqdm import tqdm
+except ImportError:
+    # Graceful fallback when tqdm is not installed.
+    def tqdm(iterable=None, **kwargs):
+        return iterable if iterable is not None else []
+
+results_root = "primal_results"
+run_timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+results_path = os.path.join(results_root, run_timestamp)
 environment_path="saved_environments"
+if not os.path.exists(results_root):
+    os.makedirs(results_root)
 if not os.path.exists(results_path):
     os.makedirs(results_path)
 
@@ -19,14 +38,30 @@ class PRIMAL(object):
     '''
     def __init__(self,model_path,grid_size):
         self.grid_size=grid_size
+        
+        # 配置 GPU
         config = tf.ConfigProto(allow_soft_placement = True)
-        config.gpu_options.allow_growth=True
-        self.sess=tf.Session(config=config)
-        self.network=ACNet("global",5,None,False,grid_size,"global")
-        #load the weights from the checkpoint (only the global ones!)
+        # 启用日志显示操作所在的设备
+        config.log_device_placement = False  # 设为 True 可看到详细的设备分配日志
+        # GPU 内存自动增长
+        config.gpu_options.allow_growth = True
+        # 设置 GPU 使用比例（可选，注释掉使用自动增长模式）
+        # config.gpu_options.per_process_memory_fraction = 0.8
+        
+        # 使用 GPU
+        with tf.device('/gpu:0'):
+            self.sess = tf.Session(config=config)
+            self.network = ACNet("global", 5, None, False, grid_size, "global")
+        
+        # 加载模型权重
         ckpt = tf.train.get_checkpoint_state(model_path)
         saver = tf.train.Saver()
-        saver.restore(self.sess,ckpt.model_checkpoint_path)
+
+        if ckpt and ckpt.model_checkpoint_path:
+            saver.restore(self.sess, ckpt.model_checkpoint_path)
+            print(f"✓ 成功从 {ckpt.model_checkpoint_path} 加载模型")
+        else:
+            raise Exception("No checkpoint found at {}".format(model_path))
         
     def set_env(self,gym):
         self.num_agents=gym.num_agents
@@ -95,11 +130,106 @@ def make_name(n,s,d,id,extension,dirname,extra=""):
         return dirname+'/'+"{}_agents_{}_size_{}_density_id_{}{}".format(n,s,d,id,extension)
     else:
         return dirname+'/'+"{}_agents_{}_size_{}_density_id_{}_{}{}".format(n,s,d,id,extra,extension)
+
+
+def init_summary():
+    return {
+        'created_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+        'total': 0,
+        'finished': 0,
+        'timeout': 0,
+        'missing_environment': 0,
+        'crashed': 0,
+        'time_sum': 0.0,
+        'time_count': 0,
+        'length_sum': 0,
+        'length_count': 0,
+        'by_size_density': {}
+    }
+
+
+def update_summary(summary, n, s, d, result):
+    density_key = '{:g}'.format(d)
+    size_key = str(s)
+    by_size = summary['by_size_density'].setdefault(size_key, {})
+    bucket = by_size.setdefault(density_key, {
+        'total': 0,
+        'finished': 0,
+        'timeout': 0,
+        'missing_environment': 0,
+        'crashed': 0,
+        'time_sum': 0.0,
+        'time_count': 0,
+        'length_sum': 0,
+        'length_count': 0
+    })
+
+    summary['total'] += 1
+    bucket['total'] += 1
+
+    if result.get('error') == 'missing_environment_file':
+        summary['missing_environment'] += 1
+        bucket['missing_environment'] += 1
+    elif result.get('crashed'):
+        summary['crashed'] += 1
+        bucket['crashed'] += 1
+    elif result.get('finished'):
+        summary['finished'] += 1
+        bucket['finished'] += 1
+    else:
+        summary['timeout'] += 1
+        bucket['timeout'] += 1
+
+    if 'time' in result:
+        summary['time_sum'] += float(result['time'])
+        summary['time_count'] += 1
+        bucket['time_sum'] += float(result['time'])
+        bucket['time_count'] += 1
+
+    if 'length' in result:
+        summary['length_sum'] += int(result['length'])
+        summary['length_count'] += 1
+        bucket['length_sum'] += int(result['length'])
+        bucket['length_count'] += 1
+
+
+def finalize_summary(summary):
+    if summary['time_count'] > 0:
+        summary['avg_time'] = summary['time_sum'] / summary['time_count']
+    else:
+        summary['avg_time'] = None
+
+    if summary['length_count'] > 0:
+        summary['avg_length'] = summary['length_sum'] / summary['length_count']
+    else:
+        summary['avg_length'] = None
+
+    for size_key, density_map in summary['by_size_density'].items():
+        for density_key, bucket in density_map.items():
+            if bucket['time_count'] > 0:
+                bucket['avg_time'] = bucket['time_sum'] / bucket['time_count']
+            else:
+                bucket['avg_time'] = None
+
+            if bucket['length_count'] > 0:
+                bucket['avg_length'] = bucket['length_sum'] / bucket['length_count']
+            else:
+                bucket['avg_length'] = None
+
+    summary['updated_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
     
 def run_simulations(next,primal):
     #txt file: planning time, crash, nsteps, finished
     (n,s,d,id) = next
     environment_data_filename=make_name(n,s,d,id,".npy",environment_path,extra="environment")
+    if not os.path.exists(environment_data_filename):
+        print(f"Skipping missing environment file: {environment_data_filename}")
+        txt_filename=make_name(n,s,d,id,".txt",results_path)
+        results={'finished':False,'crashed':True,'error':'missing_environment_file','environment':environment_data_filename}
+        f=open(txt_filename,'w')
+        f.write(json.dumps(results))
+        f.close()
+        return results
     world=np.load(environment_data_filename)
     gym=mapf_gym.MAPFEnv(num_agents=n, world0=world[0],goals0=world[1])
     primal.set_env(gym)
@@ -125,23 +255,46 @@ def run_simulations(next,primal):
     f=open(txt_filename,'w')
     f.write(json.dumps(results))
     f.close()
+    return results
 
 if __name__ == "__main__":
 #    import sys
 #    num_agents = int(sys.argv[1])
 
-    primal=PRIMAL('model_primal',10)
-    num_agents = 2
+    primal = PRIMAL('model_primal', 10)
+    try:
+        summary = init_summary()
+        for num_agents in [4]:
 
-    while num_agents < 1024:
-        num_agents *= 2
+            print("Starting tests for %d agents" % num_agents)
+            valid_sizes = [size for size in [10,20,40,80,160]
+                           if not (size == 10 and num_agents > 32)
+                           and not (size == 20 and num_agents > 128)
+                           and not (size == 40 and num_agents > 512)]
+            total_runs = len(valid_sizes) * 4 * 100
+            progress = tqdm(total=total_runs, desc="agents={}".format(num_agents), unit="sim")
+            for size in [10,20,40,80,160]:
+                if size==10 and num_agents>32:continue
+                if size==20 and num_agents>128:continue
+                if size==40 and num_agents>512:continue
+                for density in [0,.1,.2,.3]:
+                    for iter in range(100):
+                        result = run_simulations((num_agents,size,density,iter),primal)
+                        update_summary(summary, num_agents, size, density, result)
+                        progress.update(1)
+            progress.close()
 
-        print("Starting tests for %d agents" % num_agents)
-        for size in [10,20,40,80,160]:
-            if size==10 and num_agents>32:continue
-            if size==20 and num_agents>128:continue
-            if size==40 and num_agents>512:continue
-            for density in [0,.1,.2,.3]:
-                for iter in range(100):
-                    run_simulations((num_agents,size,density,iter),primal)
-print("finished all tests!")
+        finalize_summary(summary)
+        summary_path = os.path.join(results_path, 'summary.json')
+        with open(summary_path, 'w') as f:
+            f.write(json.dumps(summary, indent=2, sort_keys=True))
+
+        print("Summary written to {}".format(summary_path))
+        print("Summary: total={}, finished={}, timeout={}, missing_environment={}, crashed={}".format(
+            summary['total'], summary['finished'], summary['timeout'], summary['missing_environment'], summary['crashed']
+        ))
+        print("finished all tests!")
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)
