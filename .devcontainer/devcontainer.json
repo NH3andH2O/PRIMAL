@@ -5,7 +5,8 @@
     "context": ".."
   },
   "runArgs": [
-    "--gpus=all"
+    "--gpus=all",
+    "--shm-size=1g"
   ],
   "workspaceFolder": "/workspaces/PRIMAL",
   "remoteUser": "vscode",

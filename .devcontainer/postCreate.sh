@@ -4,6 +4,15 @@ set -euo pipefail
 source /opt/conda/etc/profile.d/conda.sh
 conda activate primal
 
+# TF 2.16 ships cuDNN 8 via pip; system cuDNN 9 causes dual-registration crashes.
+# Move system cuDNN 9 out of the way if present.
+if ls /usr/lib/x86_64-linux-gnu/libcudnn*.so* &>/dev/null; then
+    echo "Moving system cuDNN 9 out to avoid conflict with pip cuDNN 8..."
+    sudo mkdir -p /usr/lib/x86_64-linux-gnu/cudnn9-backup
+    sudo mv /usr/lib/x86_64-linux-gnu/libcudnn*.so* /usr/lib/x86_64-linux-gnu/cudnn9-backup/ || true
+    sudo ldconfig
+fi
+
 python --version
 pip --version
 

@@ -9,6 +9,9 @@ dependencies:
   - setuptools
   - wheel
   - matplotlib
+  - scipy
+  - imageio
+  - ipykernel
   - tk
   - pip:
       - gym==0.17.0
