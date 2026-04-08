@@ -6,7 +6,8 @@ dependencies:
   - pip
   - cython
   - numpy<2
-  - setuptools
+  # TensorBoard in this stack still imports pkg_resources, so keep setuptools below 81.
+  - setuptools<81
   - wheel
   - matplotlib
   - scipy

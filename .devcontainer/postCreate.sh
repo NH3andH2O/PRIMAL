@@ -4,6 +4,12 @@ set -euo pipefail
 source /opt/conda/etc/profile.d/conda.sh
 conda activate primal
 
+if [ -n "${TZ:-}" ] && [ -f "/usr/share/zoneinfo/$TZ" ]; then
+    echo "Configuring timezone to $TZ..."
+    echo "$TZ" | sudo tee /etc/timezone >/dev/null
+    sudo ln -snf "/usr/share/zoneinfo/$TZ" /etc/localtime
+fi
+
 # TF 2.16 ships cuDNN 8 via pip; system cuDNN 9 causes dual-registration crashes.
 # Move system cuDNN 9 out of the way if present.
 if ls /usr/lib/x86_64-linux-gnu/libcudnn*.so* &>/dev/null; then

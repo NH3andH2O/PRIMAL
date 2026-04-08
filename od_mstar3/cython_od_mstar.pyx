@@ -34,7 +34,7 @@ def find_path(world, init_pos, goals, inflation, time_limit):
     """
 
     import resource
-    resource.setrlimit(resource.RLIMIT_AS, (2**33,2**33)) # 8Gb
+    _old_soft, _old_hard = resource.getrlimit(resource.RLIMIT_AS)
 
     # convert to boolean.  For some reason coercion doesn't seem to
     # work properly
@@ -54,3 +54,5 @@ def find_path(world, init_pos, goals, inflation, time_limit):
             raise NoSolutionError()
         else:
             raise e
+    finally:
+        resource.setrlimit(resource.RLIMIT_AS, (_old_soft, _old_hard))
