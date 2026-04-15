@@ -13,7 +13,12 @@ model_path="model_primal"
 dirDict = {0:(0,0),1:(0,1),2:(1,0),3:(0,-1),4:(-1,0),5:(1,1),6:(1,-1),7:(-1,-1),8:(-1,1)}
 
 if DYNAMIC_TESTING:
-    import tensorflow as tf
+    os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
+    os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
+    os.environ.setdefault('TF_XLA_FLAGS', '--tf_xla_auto_jit=0')
+
+    import tensorflow.compat.v1 as tf
+    tf.disable_v2_behavior()
     from ACNet import ACNet
     
 def init(data):

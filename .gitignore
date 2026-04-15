@@ -95,3 +95,4 @@ primal_results/
 .github/
 .venv/
 saves/
+model_primal/
