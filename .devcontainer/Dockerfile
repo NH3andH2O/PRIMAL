@@ -1,10 +1,12 @@
-FROM nvidia/cuda:12.3.2-devel-ubuntu22.04
+FROM nvidia/cuda:12.8.1-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     CONDA_DIR=/opt/conda \
     PATH=/opt/conda/bin:$PATH
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|https://security.ubuntu.com/ubuntu|g' /etc/apt/sources.list \
+    && apt-get -o Acquire::Retries=5 update \
+    && apt-get install -y --no-install-recommends \
     bash \
     build-essential \
     ca-certificates \
